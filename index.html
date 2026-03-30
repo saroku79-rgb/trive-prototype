@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    ① viewport: initial-scale=1 固定でスマホでのズーム崩れを防止
+    ② user-scalable=no は UX を損なうため意図的に省略
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- PWA / スマホホーム画面追加対応 -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="TRYVE" />
+  <meta name="theme-color" content="#1a3a6b" />
+
+  <title>TRYVE — 挑戦を記録する</title>
+
+  <!-- フォント: display=swap で読み込み遅延を許容 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Antique+Soft&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet" />
+
+  <!--
+    ② React 本番ビルド (minified) を使用
+       ・development版 → 約1MB、production版 → 約130KB
+       ・スマホ回線での読み込みが大幅改善
+    ③ Babel on-the-fly トランスパイルを完全廃止
+       ・JSX → createElement() に書き直し
+  -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js?v=18.3.1" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js?v=18.3.1" crossorigin></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink:     #0d1117;
+      --paper:   #f8f5ef;
+      --gold:    #c9a84c;
+      --gold-lt: #e8d5a0;
+      --blue:    #1a3a6b;
+      --blue-lt: #2f5fac;
+      --muted:   #8a8070;
+      --card-bg: #ffffff;
+      --border:  #e2ddd4;
+      --danger:  #c0392b;
+      --radius:  12px;
+      --shadow:  0 2px 16px rgba(13,17,23,.08);
+    }
+
+    /* ④ スマホ: タッチハイライト除去 */
+    * { -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background: var(--paper); color: var(--ink); min-height: 100vh;
+      /* ④ スマホ: iOS Safari のバウンススクロールをコントロール */
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 999;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+    }
+
+    /* ④ スマホ: 横スクロールを防ぐ */
+    html, body { overflow-x: hidden; }
+    #root { max-width: 680px; margin: 0 auto; padding: 0 16px 96px; }
+
+    /* ══ HEADER ══════════════════════════════ */
+    .app-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 0 12px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    }
+    .app-logo {
+      font-family: 'Zen Antique Soft', serif;
+      font-size: 22px; letter-spacing: .12em; color: var(--blue);
+      cursor: pointer; user-select: none; flex-shrink: 0;
+    }
+    .app-logo span { color: var(--gold); }
+    .header-nav { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .nav-btn {
+      background: none; border: 1.5px solid var(--border); border-radius: 20px;
+      /* ④ スマホ: タッチターゲット最低44px */
+      padding: 7px 12px; min-height: 36px;
+      font-size: 12px; font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer; color: var(--muted); transition: all .2s; white-space: nowrap;
+      touch-action: manipulation;
+    }
+    .nav-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .nav-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+    .back-btn {
+      background: none; border: 1.5px solid var(--border); border-radius: 20px;
+      padding: 7px 14px; min-height: 36px;
+      font-size: 13px; font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer; color: var(--muted); transition: all .2s;
+      touch-action: manipulation;
+    }
+    .back-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* ══ CHALLENGE CARD ══════════════════════ */
+    .challenge-card {
+      border-radius: var(--radius); margin-bottom: 20px;
+      position: relative; overflow: hidden; min-height: 160px;
+    }
+    .challenge-card--plain { padding: 22px; }
+    .challenge-card--plain::after {
+      content: '挑'; font-family: 'Zen Antique Soft', serif;
+      position: absolute; right: -12px; bottom: -24px;
+      font-size: 120px; color: rgba(255,255,255,.08); pointer-events: none;
+    }
+    .challenge-card--photo { padding: 0; }
+    .challenge-card--photo .cc-photo { width: 100%; height: 200px; object-fit: cover; display: block; }
+    .challenge-card--photo .cc-overlay { position: absolute; inset: 0; }
+    .challenge-card--photo .cc-content { position: absolute; bottom: 0; left: 0; right: 0; padding: 18px 22px; }
+    .challenge-card--plain .cc-content { position: relative; z-index: 1; }
+    .challenge-label { font-size: 11px; letter-spacing: .15em; color: rgba(255,255,255,.7); text-transform: uppercase; margin-bottom: 6px; }
+    .challenge-title { font-size: 19px; font-weight: 700; color: #fff; line-height: 1.4; margin-bottom: 16px; }
+    .progress-row { display: flex; align-items: center; gap: 12px; }
+    .progress-bar-wrap { flex: 1; height: 6px; background: rgba(255,255,255,.25); border-radius: 99px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: rgba(255,255,255,.9); border-radius: 99px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+    .progress-pct { font-size: 14px; font-weight: 700; color: rgba(255,255,255,.9); min-width: 38px; text-align: right; }
+    .days-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.2);
+      border-radius: 20px; padding: 5px 14px;
+      font-size: 13px; color: rgba(255,255,255,.9); margin-top: 12px;
+    }
+    .days-badge strong { color: #fff; }
+
+    /* ══ CHALLENGE LIST ══════════════════════ */
+    .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .page-title { font-family: 'Zen Antique Soft', serif; font-size: 20px; color: var(--blue); }
+    .challenge-list-item {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 10px; cursor: pointer;
+      box-shadow: var(--shadow); overflow: hidden;
+      transition: transform .18s, box-shadow .18s;
+      display: flex; align-items: stretch;
+      touch-action: manipulation;
+    }
+    .challenge-list-item:active { transform: scale(.99); }
+    .cli-stripe { width: 5px; flex-shrink: 0; }
+    .cli-thumb { width: 72px; flex-shrink: 0; background-size: cover; background-position: center; }
+    .cli-body { flex: 1; min-width: 0; padding: 14px 16px; }
+    .cli-title { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cli-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .cli-meta-item { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+    .cli-bar { width: 56px; height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .cli-bar-fill { height: 100%; border-radius: 99px; }
+    .cli-arrow { color: var(--muted); font-size: 20px; flex-shrink: 0; padding-right: 14px; display: flex; align-items: center; }
+
+    /* ══ ADD CHALLENGE PANEL ═════════════════ */
+    .add-panel { background: var(--card-bg); border: 1.5px dashed var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .add-panel-title { font-size: 14px; font-weight: 700; color: var(--blue); margin-bottom: 14px; }
+
+    /* ══ IMAGE UPLOADER ══════════════════════ */
+    .img-uploader { margin-bottom: 0; }
+    .img-drop-zone {
+      border: 2px dashed var(--border); border-radius: 10px;
+      padding: 22px 16px; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; background: var(--paper);
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      touch-action: manipulation;
+    }
+    .img-drop-zone:active { background: rgba(47,95,172,.06); }
+    .img-drop-icon { font-size: 28px; opacity: .5; }
+    .img-drop-text { font-size: 13px; color: var(--muted); }
+    .img-drop-sub  { font-size: 11px; color: var(--muted); opacity: .7; }
+    .img-preview-wrap { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+    .img-preview { width: 100%; max-height: 200px; object-fit: cover; display: block; }
+    .img-preview-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; }
+    .img-preview-btn {
+      background: rgba(0,0,0,.55); border: none; border-radius: 6px;
+      padding: 7px 12px; font-size: 13px; color: #fff; cursor: pointer;
+      backdrop-filter: blur(4px); font-family: 'Noto Sans JP', sans-serif;
+      min-height: 36px; touch-action: manipulation;
+    }
+    .log-thumb { width: 100%; max-height: 200px; object-fit: cover; border-radius: 8px; margin-top: 12px; display: block; }
+
+    /* ══ FORM ════════════════════════════════ */
+    .field { margin-bottom: 16px; }
+    .field-label { display: block; font-size: 12px; font-weight: 500; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; }
+    .field-label .req { color: var(--gold); margin-left: 3px; }
+    .field-input, .field-textarea {
+      width: 100%; border: 1.5px solid var(--border); border-radius: 8px; padding: 12px 14px;
+      /* ④ スマホ: font-size 16px 未満だとiOSがズームする */
+      font-size: 16px; font-family: 'Noto Sans JP', sans-serif;
+      background: var(--card-bg); color: var(--ink);
+      transition: border-color .2s, box-shadow .2s; outline: none;
+      -webkit-appearance: none; appearance: none;
+    }
+    .field-input:focus, .field-textarea:focus { border-color: var(--blue-lt); box-shadow: 0 0 0 3px rgba(47,95,172,.12); }
+    .field-textarea { min-height: 80px; resize: vertical; }
+    .field-input[type="date"] { color: var(--ink); }
+
+    /* ══ SLIDER ══════════════════════════════ */
+    .slider-row { display: flex; align-items: center; gap: 12px; }
+    .slider-input {
+      flex: 1; appearance: none; -webkit-appearance: none;
+      height: 6px; border-radius: 99px;
+      background: linear-gradient(to right, var(--blue) 0%, var(--blue) var(--val,0%), var(--border) var(--val,0%));
+      outline: none; cursor: pointer;
+      /* ④ スマホ: タッチ操作改善 */
+      touch-action: manipulation;
+    }
+    .slider-input::-webkit-slider-thumb {
+      appearance: none; -webkit-appearance: none;
+      /* ④ スマホ: 大きめのタッチターゲット */
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--blue); border: 3px solid #fff;
+      box-shadow: 0 1px 6px rgba(0,0,0,.25); cursor: pointer;
+    }
+    .slider-input::-moz-range-thumb {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--blue); border: 3px solid #fff;
+      box-shadow: 0 1px 6px rgba(0,0,0,.25); cursor: pointer;
+    }
+    .slider-val { min-width: 48px; text-align: center; font-size: 15px; font-weight: 700; color: var(--blue); }
+
+    /* ══ EMOJI ═══════════════════════════════ */
+    .emoji-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .emoji-btn {
+      font-size: 22px; width: 52px; height: 52px; border-radius: 12px;
+      border: 2px solid var(--border); background: var(--card-bg); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; line-height: 1;
+      touch-action: manipulation;
+    }
+    .emoji-btn.selected { border-color: var(--gold); background: rgba(201,168,76,.12); box-shadow: 0 0 0 2px rgba(201,168,76,.3); }
+
+    /* ══ CUSTOM FIELDS ═══════════════════════ */
+    .custom-field-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
+    .custom-field-name { font-size: 12px; color: var(--muted); min-width: 80px; font-weight: 500; padding-top: 14px; }
+    .add-custom-row { display: flex; gap: 8px; margin-top: 4px; }
+    .add-custom-row .field-input { flex: 1; }
+
+    /* ══ BUTTONS ═════════════════════════════ */
+    .btn {
+      border: none; border-radius: 8px; padding: 12px 22px; min-height: 44px;
+      font-size: 14px; font-weight: 700; font-family: 'Noto Sans JP', sans-serif;
+      cursor: pointer; transition: all .2s; letter-spacing: .03em;
+      touch-action: manipulation; -webkit-appearance: none;
+    }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:active { opacity: .85; transform: scale(.98); }
+    .btn-primary:disabled { background: var(--muted); cursor: not-allowed; opacity: .6; }
+    .btn-gold { background: var(--gold); color: #fff; }
+    .btn-gold:active { opacity: .85; }
+    .btn-gold:disabled { background: var(--muted); cursor: not-allowed; opacity: .6; }
+    .btn-ghost { background: none; border: 1.5px solid var(--border); color: var(--muted); }
+    .btn-ghost:active { border-color: var(--blue-lt); color: var(--blue); }
+    .btn-sm { padding: 9px 14px; font-size: 13px; min-height: 40px; }
+    .btn-full { width: 100%; }
+    .btn-danger-ghost { background: none; border: 1.5px solid var(--border); color: var(--muted); font-size: 12px; }
+    .btn-danger-ghost:active { border-color: var(--danger); color: var(--danger); }
+
+    /* ══ SECTION TITLE ═══════════════════════ */
+    .section-title {
+      font-size: 11px; font-weight: 700; letter-spacing: .15em;
+      color: var(--muted); text-transform: uppercase; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ══ LOG CARDS ═══════════════════════════ */
+    .log-card {
+      background: var(--card-bg); border-radius: var(--radius);
+      border: 1px solid var(--border); border-left-width: 4px;
+      padding: 18px; margin-bottom: 12px; box-shadow: var(--shadow);
+    }
+    .log-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .log-date { display: flex; flex-direction: column; gap: 2px; }
+    .log-date-day  { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .log-date-time { font-size: 11px; font-weight: 600; letter-spacing: .03em; }
+    .log-emotion { font-size: 22px; }
+    .log-progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .log-progress-bar { flex: 1; height: 4px; background: var(--border); border-radius: 99px; }
+    .log-progress-fill { height: 100%; border-radius: 99px; }
+    .log-progress-pct { font-size: 12px; font-weight: 700; min-width: 34px; text-align: right; }
+    .log-row { display: flex; gap: 10px; margin-bottom: 10px; }
+    .log-row:last-child { margin-bottom: 0; }
+    .log-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .log-content { font-size: 14px; line-height: 1.6; min-width: 0; }
+    .log-key { font-size: 11px; color: var(--muted); font-weight: 500; margin-bottom: 2px; letter-spacing: .05em; }
+    .log-val { font-size: 14px; word-break: break-word; }
+    .log-custom-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .log-challenge-badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 20px; padding: 3px 10px; font-size: 11px; font-weight: 700; margin-bottom: 10px; }
+
+    /* ══ TIMELINE DIVIDER ════════════════════ */
+    .tl-date-divider {
+      font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--muted);
+      text-transform: uppercase; margin: 22px 0 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .tl-date-divider::before, .tl-date-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .tl-date-divider::before { flex: 0 0 0px; }
+
+    /* ══ EMPTY STATE ═════════════════════════ */
+    .empty-state { text-align: center; padding: 48px 16px; color: var(--muted); }
+    .empty-state-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state-text { font-size: 15px; margin-bottom: 4px; }
+    .empty-state-sub { font-size: 13px; }
+
+    /* ══ TOAST ═══════════════════════════════ */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--ink); color: #fff; border-radius: 20px; padding: 10px 20px;
+      font-size: 14px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,.25);
+      transition: transform .35s cubic-bezier(.34,1.56,.64,1), opacity .35s;
+      opacity: 0; z-index: 1000; white-space: nowrap;
+      /* ④ スマホ: ホームインジケーターに被らないよう */
+      bottom: max(24px, env(safe-area-inset-bottom, 24px));
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* ══ SAVE ANIMATION ══════════════════════ */
+    .save-overlay {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0); z-index: 500; pointer-events: none;
+      animation: overlayFlash .7s ease forwards;
+    }
+    @keyframes overlayFlash {
+      0%   { background: rgba(255,255,255,0); }
+      20%  { background: rgba(255,255,255,.55); }
+      100% { background: rgba(255,255,255,0); }
+    }
+    .save-check {
+      width: 88px; height: 88px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; font-size: 40px; color: #fff;
+      animation: checkPop .6s cubic-bezier(.34,1.56,.64,1) forwards; opacity: 0;
+    }
+    @keyframes checkPop {
+      0%   { opacity: 0; transform: scale(.4) rotate(-15deg); }
+      60%  { opacity: 1; transform: scale(1.15) rotate(4deg); }
+      80%  { transform: scale(.95) rotate(0deg); }
+      100% { opacity: 1; transform: scale(1) rotate(0deg); }
+    }
+    .save-ripple {
+      position: absolute; width: 160px; height: 160px; border-radius: 50%;
+      animation: rippleOut .7s ease forwards; opacity: 0;
+    }
+    @keyframes rippleOut {
+      0%   { opacity: .5; transform: scale(.5); }
+      100% { opacity: 0; transform: scale(2); }
+    }
+
+    /* ══ MISC ════════════════════════════════ */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+    .optional-badge { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+
+    /* ══ ANIMATIONS ══════════════════════════ */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in { animation: fadeSlideUp .3s ease both; }
+    .delay-1 { animation-delay: .05s; }
+    .delay-2 { animation-delay: .10s; }
+    .delay-3 { animation-delay: .15s; }
+    .delay-4 { animation-delay: .20s; }
+
+    /* ══ SAFE AREA (iPhone ノッチ/ホームバー) ═ */
+    #root { padding-bottom: max(96px, calc(80px + env(safe-area-inset-bottom, 0px))); }
+  </style>
+</head>
+<body>
+<div id="root">
+  <!-- ⑤ ローディング表示（React 起動前に見えるフォールバック） -->
+  <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#8a8070;font-size:14px;">
+    読み込み中…
+  </div>
+</div>
+
+<!--
+  ③ Babel を完全廃止。JSX なしの React.createElement() で書き直したバニラJS。
+  ⑤ defer 属性で HTML パースを妨げない（スマホの初期表示を速くする）
+-->
+<script defer>
+// ────────────────────────────────────────────────
+// React helpers
+// ────────────────────────────────────────────────
+const { createElement: h, useState, useEffect, useRef, useCallback, Fragment } = React;
+
+// ────────────────────────────────────────────────
+// UTILS
+// ────────────────────────────────────────────────
+function genId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function nowStr() {
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function daysLeft(targetDate) {
+  const now = new Date(); now.setHours(0,0,0,0);
+  const tgt = new Date(targetDate); tgt.setHours(0,0,0,0);
+  return Math.ceil((tgt - now) / 86400000);
+}
+
+const COLOR_PRESETS = [
+  '#2563eb','#16a34a','#9333ea','#ea580c','#0891b2',
+  '#be185d','#ca8a04','#0f766e','#dc2626','#7c3aed',
+];
+function pickColor(n) { return COLOR_PRESETS[n % COLOR_PRESETS.length]; }
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+const EMOJIS = ['😊','🔥','😤','😔','🎉'];
+const EMOJI_LABELS = ['嬉しい','燃えてる','悔しい','落ち込んだ','最高！'];
+
+// ────────────────────────────────────────────────
+// localStorage ラッパー（スマホの例外を安全に扱う）
+// ────────────────────────────────────────────────
+const LS = {
+  get(key) {
+    try { return localStorage.getItem(key); }
+    catch { return null; }
+  },
+  set(key, val) {
+    try {
+      localStorage.setItem(key, val);
+      return true;
+    } catch(e) {
+      if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+        alert('保存容量が上限に達しました。\n古い挑戦を削除するか、画像なしで保存してください。');
+      }
+      return false;
+    }
+  },
+  remove(key) {
+    try { localStorage.removeItem(key); } catch {}
+  }
+};
+
+// ────────────────────────────────────────────────
+// ⑥ 画像圧縮ユーティリティ（スマホ撮影写真を縮小してからBase64化）
+//    最大幅1200px、品質0.82 → 容量を約60-80%削減
+// ────────────────────────────────────────────────
+function compressImage(file, maxW = 1200, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const ratio  = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// ────────────────────────────────────────────────
+// useImagePicker — FileReader の代わりに Canvas 圧縮を使用
+// ────────────────────────────────────────────────
+function useImagePicker(onPick) {
+  const inputRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+
+  const openPicker = () => inputRef.current && inputRef.current.click();
+
+  function handleChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert('画像は 10MB 以下のファイルを選んでください。');
+      e.target.value = '';
+      return;
+    }
+    setLoading(true);
+    compressImage(file)
+      .then(base64 => { onPick(base64); setLoading(false); })
+      .catch(() => {
+        // 圧縮失敗時は従来の FileReader にフォールバック
+        const reader = new FileReader();
+        reader.onload = ev => { onPick(ev.target.result); setLoading(false); };
+        reader.onerror = () => { alert('画像の読み込みに失敗しました。'); setLoading(false); };
+        reader.readAsDataURL(file);
+      });
+    e.target.value = '';
+  }
+
+  const InputEl = h('input', {
+    ref: inputRef, type: 'file',
+    // ④ スマホ: capture="environment" でカメラ直接起動も可能にする
+    accept: 'image/*',
+    style: { display: 'none' },
+    onChange: handleChange,
+  });
+
+  return { openPicker, InputEl, loading };
+}
+
+// ────────────────────────────────────────────────
+// ImageUploader コンポーネント
+// ────────────────────────────────────────────────
+function ImageUploader({ image, onImage, placeholder = '写真を追加' }) {
+  const { openPicker, InputEl, loading } = useImagePicker(onImage);
+
+  if (loading) return h('div', { className: 'img-drop-zone' },
+    h('div', { className: 'img-drop-icon' }, '⏳'),
+    h('div', { className: 'img-drop-text' }, '画像を処理中…'),
+  );
+
+  if (image) return h('div', { className: 'img-uploader' },
+    InputEl,
+    h('div', { className: 'img-preview-wrap' },
+      h('img', { src: image, className: 'img-preview', alt: 'プレビュー', loading: 'lazy' }),
+      h('div', { className: 'img-preview-actions' },
+        h('button', { className: 'img-preview-btn', onClick: openPicker }, '差し替え'),
+        h('button', {
+          className: 'img-preview-btn',
+          style: { background: 'rgba(192,57,43,.75)' },
+          onClick: () => onImage(null),
+        }, '削除'),
+      ),
+    ),
+  );
+
+  return h('div', { className: 'img-uploader' },
+    InputEl,
+    h('div', {
+      className: 'img-drop-zone',
+      onClick: openPicker,
+      role: 'button', tabIndex: 0,
+      onKeyDown: e => e.key === 'Enter' && openPicker(),
+    },
+      h('div', { className: 'img-drop-icon' }, '📷'),
+      h('div', { className: 'img-drop-text' }, placeholder),
+      h('div', { className: 'img-drop-sub' }, 'JPG / PNG / WebP • 最大10MB'),
+    ),
+  );
+}
+
+// ────────────────────────────────────────────────
+// useStore
+// ────────────────────────────────────────────────
+function useStore() {
+  const KEY = 'tryve_v4'; // キーは変えない（既存データ引き継ぎ）
+
+  const [store, setStore] = useState(() => {
+    try {
+      const raw = LS.get(KEY);
+      if (!raw) return { challenges: [] };
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.challenges)) return { challenges: [] };
+      parsed.challenges = parsed.challenges.map((c, i) => ({
+        id:           c.id || genId(),
+        title:        c.title || '',
+        targetDate:   c.targetDate || '',
+        colorTheme:   c.colorTheme || pickColor(i),
+        image:        c.image || null,
+        customFields: Array.isArray(c.customFields) ? c.customFields : [],
+        logs: (Array.isArray(c.logs) ? c.logs : []).map(l => ({ ...l, image: l.image || null })),
+      }));
+      return parsed;
+    } catch { return { challenges: [] }; }
+  });
+
+  const storeRef = useRef(store);
+  useEffect(() => { storeRef.current = store; }, [store]);
+
+  const save = useCallback((next) => {
+    LS.set(KEY, JSON.stringify(next));
+    setStore(next);
+  }, []);
+
+  const addChallenge = useCallback((title, targetDate, image) => {
+    const id = genId();
+    const colorTheme = pickColor(storeRef.current.challenges.length);
+    save({ challenges: [...storeRef.current.challenges,
+      { id, title, targetDate, colorTheme, image: image || null, customFields: [], logs: [] }
+    ]});
+    return id;
+  }, [save]);
+
+  const updateChallengeImage = useCallback((challengeId, image) => {
+    const prev = storeRef.current;
+    save({ ...prev, challenges: prev.challenges.map(c =>
+      c.id === challengeId ? { ...c, image: image || null } : c
+    )});
+  }, [save]);
+
+  const addLog = useCallback((challengeId, log) => {
+    const prev = storeRef.current;
+    const logWithMeta = { ...log, challengeId, image: log.image || null };
+    save({
+      ...prev,
+      challenges: prev.challenges.map(c => {
+        if (c.id !== challengeId) return c;
+        return { ...c, logs: [logWithMeta, ...c.logs].sort((a,b) => b.id.localeCompare(a.id)) };
+      }),
+    });
+  }, [save]);
+
+  const addCustomField = useCallback((challengeId, fieldName) => {
+    const prev = storeRef.current;
+    save({ ...prev, challenges: prev.challenges.map(c => {
+      if (c.id !== challengeId || c.customFields.includes(fieldName)) return c;
+      return { ...c, customFields: [...c.customFields, fieldName] };
+    })});
+  }, [save]);
+
+  const deleteChallenge = useCallback((challengeId) => {
+    const prev = storeRef.current;
+    save({ ...prev, challenges: prev.challenges.filter(c => c.id !== challengeId) });
+  }, [save]);
+
+  const getTimeline = useCallback(() => {
+    const all = [];
+    for (const c of storeRef.current.challenges) {
+      for (const log of c.logs) {
+        all.push({ ...log, challengeId: log.challengeId || c.id, challengeTitle: c.title, colorTheme: c.colorTheme });
+      }
+    }
+    return all.sort((a,b) => (b.id||b.date||'').localeCompare(a.id||a.date||''));
+  }, []);
+
+  const resetAll = useCallback(() => {
+    LS.remove(KEY);
+    setStore({ challenges: [] });
+  }, []);
+
+  return { store, addChallenge, updateChallengeImage, addLog, addCustomField, deleteChallenge, getTimeline, resetAll };
+}
+
+// ────────────────────────────────────────────────
+// SaveAnimation
+// ────────────────────────────────────────────────
+function SaveAnimation({ color, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 750); return () => clearTimeout(t); }, [onDone]);
+  return h('div', { className: 'save-overlay' },
+    h('div', { className: 'save-ripple', style: { background: hexToRgba(color, .25) } }),
+    h('div', { className: 'save-check',  style: { background: color } }, '✓'),
+  );
+}
+
+// ────────────────────────────────────────────────
+// Toast
+// ────────────────────────────────────────────────
+function Toast({ message, show }) {
+  return h('div', { className: `toast${show ? ' show' : ''}` }, message);
+}
+
+// ────────────────────────────────────────────────
+// ChallengeCard
+// ────────────────────────────────────────────────
+function ChallengeCard({ challenge }) {
+  const pct   = challenge.logs[0] ? challenge.logs[0].progress : 0;
+  const dl    = daysLeft(challenge.targetDate);
+  const color = challenge.colorTheme || '#1a3a6b';
+  const img   = challenge.image;
+
+  const dlText = dl > 0 ? `あと ${dl} 日` : dl === 0 ? '今日が期日！' : `${Math.abs(dl)} 日超過`;
+
+  const content = h('div', { className: 'cc-content' },
+    h('div', { className: 'challenge-label' }, 'あなたの挑戦'),
+    h('div', { className: 'challenge-title' }, challenge.title),
+    h('div', { className: 'progress-row' },
+      h('div', { className: 'progress-bar-wrap' },
+        h('div', { className: 'progress-bar-fill', style: { width: pct + '%' } }),
+      ),
+      h('div', { className: 'progress-pct' }, pct + '%'),
+    ),
+    h('div', { className: 'days-badge' }, '📅 達成予定まで\u00a0', h('strong', null, dlText)),
+  );
+
+  if (img) {
+    return h('div', { className: 'challenge-card challenge-card--photo animate-in' },
+      h('img', { src: img, className: 'cc-photo', alt: challenge.title, loading: 'lazy' }),
+      h('div', { className: 'cc-overlay', style: {
+        background: `linear-gradient(to bottom, rgba(0,0,0,.05) 0%, ${hexToRgba(color, .85)} 100%)`
+      }}),
+      content,
+    );
+  }
+  return h('div', { className: 'challenge-card challenge-card--plain animate-in', style: { background: color } }, content);
+}
+
+// ────────────────────────────────────────────────
+// LogCard
+// ────────────────────────────────────────────────
+function LogCard({ log, customFields, colorTheme, showChallengeBadge }) {
+  const color     = colorTheme || '#1a3a6b';
+  const hasCustom = customFields.length > 0 && Object.values(log.custom || {}).some(v => v);
+
+  return h('div', { className: 'log-card animate-in', style: { borderLeftColor: color } },
+    showChallengeBadge && log.challengeTitle && h('div', {
+      className: 'log-challenge-badge',
+      style: { background: hexToRgba(color, .12), color },
+    }, '🏷 ', log.challengeTitle),
+
+    h('div', { className: 'log-card-header' },
+      h('span', { className: 'log-date' },
+        h('span', { className: 'log-date-day' }, '📆 ', log.date ? log.date.slice(0,10) : ''),
+        log.date && log.date.length > 10 && h('span', { className: 'log-date-time', style: { color } },
+          '🕐 ', log.date.slice(11,16)
+        ),
+      ),
+      log.emotion && h('span', { className: 'log-emotion' }, log.emotion),
+    ),
+
+    h('div', { className: 'log-progress-row' },
+      h('div', { className: 'log-progress-bar' },
+        h('div', { className: 'log-progress-fill', style: { width: log.progress + '%', background: color } }),
+      ),
+      h('span', { className: 'log-progress-pct', style: { color } }, log.progress + '%'),
+    ),
+
+    h('div', { className: 'log-row' },
+      h('span', { className: 'log-icon' }, '✅'),
+      h('div', { className: 'log-content' },
+        h('div', { className: 'log-key' }, '今日の行動'),
+        h('div', { className: 'log-val' }, log.action),
+      ),
+    ),
+    h('div', { className: 'log-row' },
+      h('span', { className: 'log-icon' }, '👣'),
+      h('div', { className: 'log-content' },
+        h('div', { className: 'log-key' }, '次の一歩'),
+        h('div', { className: 'log-val' }, log.nextStep),
+      ),
+    ),
+
+    hasCustom && h('div', { className: 'log-custom-grid' },
+      ...customFields.map(f => log.custom && log.custom[f]
+        ? h('div', { key: f },
+            h('div', { className: 'log-key' }, f),
+            h('div', { className: 'log-val' }, log.custom[f]),
+          )
+        : null
+      ),
+    ),
+
+    log.image && h('img', { src: log.image, className: 'log-thumb', alt: '添付画像', loading: 'lazy' }),
+  );
+}
+
+// ────────────────────────────────────────────────
+// 画面① ChallengeListScreen
+// ────────────────────────────────────────────────
+function ChallengeListScreen({ store, onSelect, onAdd }) {
+  const [showForm,   setShowForm]   = useState(false);
+  const [title,      setTitle]      = useState('');
+  const [targetDate, setTarget]     = useState('');
+  const [coverImage, setCoverImage] = useState(null);
+
+  function handleAdd() {
+    if (!title.trim() || !targetDate) return;
+    const id = onAdd(title.trim(), targetDate, coverImage);
+    setTitle(''); setTarget(''); setCoverImage(null); setShowForm(false);
+    onSelect(id);
+  }
+
+  const form = h('div', { className: 'add-panel animate-in' },
+    h('div', { className: 'add-panel-title' }, '🎯 新しい挑戦を登録'),
+    h('div', { className: 'field' },
+      h('label', { className: 'field-label' }, '挑戦タイトル ', h('span', { className: 'req' }, '*')),
+      h('input', {
+        type: 'text', className: 'field-input',
+        placeholder: '例：自分の会社を創業する',
+        value: title, onChange: e => setTitle(e.target.value),
+        onKeyDown: e => e.key === 'Enter' && handleAdd(),
+      }),
+    ),
+    h('div', { className: 'field' },
+      h('label', { className: 'field-label' }, '達成予定日 ', h('span', { className: 'req' }, '*')),
+      h('input', {
+        type: 'date', className: 'field-input',
+        value: targetDate, min: todayStr(),
+        onChange: e => setTarget(e.target.value),
+      }),
+    ),
+    h('div', { className: 'field' },
+      h('label', { className: 'field-label' }, 'カバー画像 ', h('span', { className: 'optional-badge' }, '— 任意')),
+      h(ImageUploader, { image: coverImage, onImage: setCoverImage, placeholder: '挑戦を象徴する写真を追加' }),
+    ),
+    h('div', { style: { display:'flex', gap:8, flexWrap:'wrap' } },
+      h('button', { className: 'btn btn-gold', onClick: handleAdd, disabled: !title.trim() || !targetDate }, '登録する →'),
+      h('button', { className: 'btn btn-ghost', onClick: () => { setShowForm(false); setTitle(''); setTarget(''); setCoverImage(null); } }, 'キャンセル'),
+    ),
+  );
+
+  const header = h('div', { className: 'list-header animate-in' },
+    h('h2', { className: 'page-title' }, '挑戦一覧'),
+    h('button', { className: 'btn btn-gold btn-sm', onClick: () => setShowForm(true) }, '＋ 挑戦を追加'),
+  );
+
+  const empty = h('div', { className: 'empty-state animate-in delay-1' },
+    h('div', { className: 'empty-state-icon' }, '🌱'),
+    h('div', { className: 'empty-state-text' }, 'まだ挑戦が登録されていません'),
+    h('div', { className: 'empty-state-sub' }, '「＋ 挑戦を追加」から最初の挑戦を始めよう'),
+  );
+
+  const list = store.challenges.map((c, i) => {
+    const pct   = c.logs[0] ? c.logs[0].progress : 0;
+    const dl    = daysLeft(c.targetDate);
+    const color = c.colorTheme || '#1a3a6b';
+    const dlText = dl > 0 ? `あと ${dl} 日` : dl === 0 ? '今日が期日' : `${Math.abs(dl)} 日超過`;
+    return h('div', {
+      key: c.id, className: 'challenge-list-item animate-in',
+      style: { animationDelay: `${i * .06}s` },
+      onClick: () => onSelect(c.id),
+    },
+      c.image
+        ? h('div', { className: 'cli-thumb', style: { backgroundImage: `url(${c.image})` } })
+        : h('div', { className: 'cli-stripe', style: { background: color } }),
+      h('div', { className: 'cli-body' },
+        h('div', { className: 'cli-title' }, c.title),
+        h('div', { className: 'cli-meta' },
+          h('div', { className: 'cli-meta-item' },
+            h('div', { className: 'cli-bar' },
+              h('div', { className: 'cli-bar-fill', style: { width: pct+'%', background: color } }),
+            ),
+            pct + '%',
+          ),
+          h('div', { className: 'cli-meta-item' }, '📅 ' + dlText),
+          h('div', { className: 'cli-meta-item' }, '📝 ' + c.logs.length + ' 件'),
+        ),
+      ),
+      h('div', { className: 'cli-arrow' }, '›'),
+    );
+  });
+
+  return h('div', null,
+    showForm ? form : header,
+    store.challenges.length === 0 ? empty : list,
+  );
+}
+
+// ────────────────────────────────────────────────
+// 画面② ChallengeDetailScreen
+// ────────────────────────────────────────────────
+function ChallengeDetailScreen({ challenge, onRecordStep, onDelete, onUpdateImage }) {
+  const color = challenge.colorTheme || '#1a3a6b';
+  const [editingImage, setEditingImage] = useState(false);
+
+  return h('div', null,
+    h(ChallengeCard, { challenge }),
+
+    h('div', { style: { marginBottom: 14, display:'flex', gap:8, flexWrap:'wrap' } },
+      h('button', {
+        className: 'btn btn-full',
+        style: { padding:'14px', fontSize:16, background:color, color:'#fff',
+                 border:'none', borderRadius:8, cursor:'pointer',
+                 fontFamily:'Noto Sans JP, sans-serif', fontWeight:700,
+                 minHeight: 50 },
+        onClick: onRecordStep,
+      }, '✏️ 一歩を記録する'),
+      h('button', {
+        className: 'btn btn-ghost btn-sm', style: { whiteSpace:'nowrap' },
+        onClick: () => setEditingImage(v => !v),
+      }, editingImage ? '閉じる' : '🖼 カバー画像を変更'),
+    ),
+
+    editingImage && h('div', { className: 'field animate-in', style: { marginBottom: 18 } },
+      h(ImageUploader, {
+        image: challenge.image,
+        onImage: img => { onUpdateImage(img); setEditingImage(false); },
+        placeholder: '新しいカバー画像を選択',
+      }),
+    ),
+
+    h('div', { className: 'section-title animate-in' },
+      '過去のログ',
+      h('span', { style: { fontWeight:400, color:'var(--muted)', textTransform:'none', fontSize:12, letterSpacing:0 } },
+        challenge.logs.length + ' 件',
+      ),
+    ),
+
+    challenge.logs.length === 0
+      ? h('div', { className: 'empty-state animate-in' },
+          h('div', { className: 'empty-state-icon' }, '📭'),
+          h('div', { className: 'empty-state-text' }, 'まだログがありません'),
+          h('div', { className: 'empty-state-sub' }, '「一歩を記録する」から今日の記録を始めよう'),
+        )
+      : challenge.logs.map(log =>
+          h(LogCard, { key: log.id || log.date, log, customFields: challenge.customFields, colorTheme: color, showChallengeBadge: false })
+        ),
+
+    h('div', { style: { textAlign:'center', marginTop:28 } },
+      h('button', { className: 'btn btn-danger-ghost btn-sm', onClick: onDelete }, '⚠ この挑戦を削除'),
+    ),
+  );
+}
+
+// ────────────────────────────────────────────────
+// 画面③ LogInputScreen
+// ────────────────────────────────────────────────
+function LogInputScreen({ challenge, onAddLog, onAddCustomField }) {
+  const [action,     setAction]     = useState('');
+  const [nextStep,   setNextStep]   = useState('');
+  const [progress,   setProgress]   = useState(challenge.logs[0] ? challenge.logs[0].progress : 0);
+  const [emotion,    setEmotion]    = useState('');
+  const [logImage,   setLogImage]   = useState(null);
+  const [customVals, setCustomVals] = useState({});
+  const [newField,   setNewField]   = useState('');
+  const [saving,     setSaving]     = useState(false);
+  const pendingLog = useRef(null);
+  const color = challenge.colorTheme || '#1a3a6b';
+
+  function resetForm() {
+    setAction(''); setNextStep(''); setProgress(0);
+    setEmotion(''); setLogImage(null);
+    setCustomVals(prev => Object.fromEntries(Object.keys(prev).map(k => [k,''])));
+    setNewField('');
+  }
+
+  function handleAddField() {
+    const name = newField.trim();
+    if (!name || challenge.customFields.includes(name)) return;
+    onAddCustomField(name); setNewField('');
+  }
+
+  function handleSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!action.trim() || !nextStep.trim()) return;
+    const ts = nowStr();
+    pendingLog.current = {
+      id: ts, date: ts,
+      action: action.trim(), nextStep: nextStep.trim(),
+      progress, emotion: emotion || null, image: logImage || null,
+      custom: Object.fromEntries(Object.entries(customVals).filter(([,v]) => v && v.trim())),
+    };
+    resetForm();
+    setSaving(true);
+  }
+
+  const handleSaveDone = useCallback(() => {
+    setSaving(false);
+    if (pendingLog.current) { onAddLog(pendingLog.current); pendingLog.current = null; }
+  }, [onAddLog]);
+
+  const canSubmit = action.trim() && nextStep.trim();
+
+  return h('div', null,
+    saving && h(SaveAnimation, { color, onDone: handleSaveDone }),
+    h(ChallengeCard, { challenge }),
+    h('div', { className: 'section-title animate-in delay-1' }, '今日の記録'),
+
+    h('div', { className: 'field animate-in delay-1' },
+      h('label', { className: 'field-label' }, '今日の行動 ', h('span', { className: 'req' }, '*')),
+      h('textarea', {
+        className: 'field-textarea', placeholder: '例：事業計画のドラフトを30分書いた',
+        value: action, onChange: e => setAction(e.target.value),
+      }),
+    ),
+    h('div', { className: 'field animate-in delay-2' },
+      h('label', { className: 'field-label' }, '次にやる一歩 ', h('span', { className: 'req' }, '*')),
+      h('textarea', {
+        className: 'field-textarea', placeholder: '例：明日、資金計画を書く',
+        value: nextStep, onChange: e => setNextStep(e.target.value),
+      }),
+    ),
+    h('div', { className: 'field animate-in delay-2' },
+      h('label', { className: 'field-label' }, '進捗状況 ', h('span', { className: 'req' }, '*')),
+      h('div', { className: 'slider-row' },
+        h('input', {
+          type: 'range', className: 'slider-input',
+          min: 0, max: 100, value: progress,
+          style: { '--val': progress + '%' },
+          onChange: e => setProgress(Number(e.target.value)),
+        }),
+        h('div', { className: 'slider-val' }, progress + '%'),
+      ),
+    ),
+
+    h('hr', { className: 'divider' }),
+    h('div', { className: 'section-title animate-in delay-3' },
+      '任意項目 ', h('span', { className: 'optional-badge' }, '— なくてもOK'),
+    ),
+
+    h('div', { className: 'field animate-in delay-3' },
+      h('label', { className: 'field-label' }, '気持ちスタンプ'),
+      h('div', { className: 'emoji-row' },
+        ...EMOJIS.map((em, i) =>
+          h('button', {
+            key: em, className: `emoji-btn${emotion === em ? ' selected' : ''}`,
+            title: EMOJI_LABELS[i], onClick: () => setEmotion(emotion === em ? '' : em),
+          }, em)
+        ),
+      ),
+    ),
+
+    h('div', { className: 'field animate-in delay-3' },
+      h('label', { className: 'field-label' }, '今日の写真 ', h('span', { className: 'optional-badge' }, '— 任意')),
+      h(ImageUploader, { image: logImage, onImage: setLogImage, placeholder: '今日の一歩を写真で残す' }),
+    ),
+
+    challenge.customFields.length > 0 && h('div', { className: 'field animate-in delay-3' },
+      h('label', { className: 'field-label' }, 'カスタム項目'),
+      ...challenge.customFields.map(f =>
+        h('div', { className: 'custom-field-row', key: f },
+          h('span', { className: 'custom-field-name' }, f),
+          h('div', { style: { flex:1 } },
+            h('input', {
+              type: 'text', className: 'field-input',
+              placeholder: f + ' を入力',
+              value: customVals[f] || '',
+              onChange: e => setCustomVals(prev => ({ ...prev, [f]: e.target.value })),
+            }),
+          ),
+        )
+      ),
+    ),
+
+    h('div', { className: 'field animate-in delay-4' },
+      h('label', { className: 'field-label' }, 'カスタム項目を追加'),
+      h('div', { className: 'add-custom-row' },
+        h('input', {
+          type: 'text', className: 'field-input',
+          placeholder: '項目名（例：学んだこと）',
+          value: newField, onChange: e => setNewField(e.target.value),
+          onKeyDown: e => e.key === 'Enter' && handleAddField(),
+        }),
+        h('button', { className: 'btn btn-ghost btn-sm', onClick: handleAddField }, '追加'),
+      ),
+    ),
+
+    h('div', { style: { marginTop: 20 }, className: 'animate-in delay-4' },
+      h('button', {
+        style: {
+          width:'100%', padding:'16px', fontSize:17, minHeight:52,
+          background: canSubmit ? color : 'var(--muted)',
+          color:'#fff', border:'none', borderRadius:8, cursor:'pointer',
+          fontFamily:'Noto Sans JP, sans-serif', fontWeight:700,
+          transition:'background .2s', WebkitAppearance: 'none',
+        },
+        onClick: handleSubmit,
+        disabled: !canSubmit,
+      }, '一歩を記録する ✓'),
+    ),
+  );
+}
+
+// ────────────────────────────────────────────────
+// 画面④ TimelineScreen
+// ────────────────────────────────────────────────
+function TimelineScreen({ getTimeline, store }) {
+  const logs = getTimeline();
+  let lastDay = null;
+
+  if (logs.length === 0) return h('div', null,
+    h('div', { className: 'list-header animate-in' }, h('h2', { className: 'page-title' }, 'タイムライン')),
+    h('div', { className: 'empty-state animate-in delay-1' },
+      h('div', { className: 'empty-state-icon' }, '🌊'),
+      h('div', { className: 'empty-state-text' }, 'まだログがありません'),
+      h('div', { className: 'empty-state-sub' }, '挑戦を選んで最初の一歩を記録しよう'),
+    ),
+  );
+
+  return h('div', null,
+    h('div', { className: 'list-header animate-in' },
+      h('h2', { className: 'page-title' }, 'タイムライン'),
+      h('span', { style: { fontSize:12, color:'var(--muted)' } }, '全 ' + logs.length + ' 件'),
+    ),
+    ...logs.map((log, i) => {
+      const day = log.date ? log.date.slice(0,10) : '不明';
+      const showDivider = day !== lastDay; lastDay = day;
+      const challenge    = store.challenges.find(c => c.id === log.challengeId);
+      const customFields = challenge ? challenge.customFields : [];
+      const color        = log.colorTheme || '#1a3a6b';
+      return h(Fragment, { key: log.id || (log.date + i) },
+        showDivider && h('div', { className: 'tl-date-divider animate-in', style: { animationDelay: `${i*.04}s` } }, day),
+        h(LogCard, { log, customFields, colorTheme: color, showChallengeBadge: true }),
+      );
+    }),
+  );
+}
+
+// ────────────────────────────────────────────────
+// App Root
+// ────────────────────────────────────────────────
+function App() {
+  const { store, addChallenge, updateChallengeImage, addLog, addCustomField, deleteChallenge, getTimeline, resetAll } = useStore();
+  const [view,       setView]       = useState('list');
+  const [selectedId, setSelectedId] = useState(null);
+  const [toast,      setToast]      = useState({ show: false, msg: '' });
+  const toastTimer = useRef(null);
+
+  const selectedChallenge = store.challenges.find(c => c.id === selectedId) || null;
+
+  function showToast(msg) {
+    clearTimeout(toastTimer.current);
+    setToast({ show: true, msg });
+    toastTimer.current = setTimeout(() => setToast(p => ({ ...p, show: false })), 2200);
+  }
+
+  const handleSelect     = id  => { setSelectedId(id); setView('detail'); };
+  const handleRecordStep = ()  => setView('log');
+  const handleAddLog     = log => { if (!selectedId) return; addLog(selectedId, log); showToast('✓ ログを保存しました！'); setView('detail'); };
+  const handleUpdateImage= img => { if (!selectedId) return; updateChallengeImage(selectedId, img); showToast(img ? '🖼 カバー画像を更新しました' : 'カバー画像を削除しました'); };
+  const handleAddCF      = f   => { if (selectedId) addCustomField(selectedId, f); };
+  const handleDelete     = ()  => {
+    if (!selectedId) return;
+    if (!confirm('この挑戦とすべてのログを削除しますか？この操作は元に戻せません。')) return;
+    deleteChallenge(selectedId); setSelectedId(null); setView('list'); showToast('挑戦を削除しました');
+  };
+
+  const backMap = {
+    detail:   { label: '← 一覧',      fn: () => { setView('list'); setSelectedId(null); } },
+    log:      { label: '← キャンセル', fn: () => setView('detail') },
+    timeline: { label: '← 一覧',      fn: () => setView('list') },
+  };
+
+  const isTopLevel = view === 'list' || view === 'timeline';
+
+  return h('div', null,
+    h('header', { className: 'app-header' },
+      h('div', { className: 'app-logo', onClick: () => { setView('list'); setSelectedId(null); } },
+        'TRY', h('span', null, 'VE'),
+      ),
+      h('div', { className: 'header-nav' },
+        isTopLevel
+          ? h(Fragment, null,
+              h('button', { className: `nav-btn${view==='list'?' active':''}`, onClick: () => { setView('list'); setSelectedId(null); } }, '挑戦一覧'),
+              h('button', { className: `nav-btn${view==='timeline'?' active':''}`, onClick: () => setView('timeline') }, '🌊 TL'),
+            )
+          : (backMap[view] && h('button', { className: 'back-btn', onClick: backMap[view].fn }, backMap[view].label)),
+      ),
+    ),
+
+    view === 'list' && h(ChallengeListScreen, { store, onSelect: handleSelect, onAdd: addChallenge }),
+    view === 'detail' && selectedChallenge && h(ChallengeDetailScreen, {
+      challenge: selectedChallenge, onRecordStep: handleRecordStep,
+      onDelete: handleDelete, onUpdateImage: handleUpdateImage,
+    }),
+    view === 'log' && selectedChallenge && h(LogInputScreen, {
+      challenge: selectedChallenge, onAddLog: handleAddLog, onAddCustomField: handleAddCF,
+    }),
+    view === 'timeline' && h(TimelineScreen, { getTimeline, store }),
+
+    view === 'list' && store.challenges.length > 0 && h('div', { style: { textAlign:'center', marginTop:36 } },
+      h('button', { className: 'btn btn-danger-ghost btn-sm',
+        onClick: () => { if (confirm('すべての挑戦データをリセットしますか？この操作は元に戻せません。')) resetAll(); }
+      }, '⚠ すべてリセット'),
+    ),
+
+    h(Toast, { message: toast.msg, show: toast.show }),
+  );
+}
+
+// React 18 の createRoot を使用
+ReactDOM.createRoot(document.getElementById('root')).render(h(App, null));
+</script>
+</body>
+</html>
